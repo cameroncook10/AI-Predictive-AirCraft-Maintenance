@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import Gauge from './Gauge';
 import PredictionChart from './PredictionChart';
+import CameraPanel from './CameraPanel';
+import InternalSystems from './InternalSystems';
+import ManualViewer from './ManualViewer';
+import InspectionChecklist from './InspectionChecklist';
 import { acknowledgeAlert, completeWorkOrder } from '../api';
 
 function healthColor(h) {
@@ -9,8 +13,14 @@ function healthColor(h) {
   return 'var(--green)';
 }
 
+function trendClass(trend) {
+  if (trend.includes('critical') || trend.includes('↓↓')) return 'critical-card';
+  if (trend.includes('declining') || trend.includes('↓')) return 'declining';
+  return '';
+}
+
 function priorityColor(p) {
-  return { critical: '#e84040', high: '#f5a623', medium: '#4a9eff', low: '#22c87a' }[p] || '#6b6e7a';
+  return { critical: '#ff4757', high: '#ffb020', medium: '#3b82f6', low: '#00d68f' }[p] || '#6b6e7e';
 }
 
 function daysColor(d) {
@@ -19,7 +29,7 @@ function daysColor(d) {
   return 'var(--muted)';
 }
 
-export default function CenterPanel({ aircraft, onRefresh, onRefreshAll }) {
+export default function CenterPanel({ aircraft, activeView, cameraData, inspections, onRefresh, onRefreshAll, onToggleInspection }) {
   const [activeTab, setActiveTab] = useState('ov');
 
   if (!aircraft) {
@@ -42,18 +52,76 @@ export default function CenterPanel({ aircraft, onRefresh, onRefreshAll }) {
     onRefresh();
   };
 
+  // For camera, manuals, inspections — render full-page views
+  if (activeView === 'camera') {
+    return (
+      <main className="center">
+        <div className="center-head">
+          <div>
+            <div className="center-title">{ac.tailNumber} — Camera System</div>
+            <div className="center-route">Gyroscopic Inspection Camera · {ac.name}</div>
+            <div className="center-bay">{ac.bayLocation}</div>
+          </div>
+          <span className={`badge badge-${ac.status}`}>{ac.status}</span>
+        </div>
+        <div className="pane active">
+          <CameraPanel cameraData={cameraData} />
+        </div>
+      </main>
+    );
+  }
+
+  if (activeView === 'manuals') {
+    return (
+      <main className="center">
+        <div className="center-head">
+          <div>
+            <div className="center-title">{ac.tailNumber} — Maintenance Manuals</div>
+            <div className="center-route">AMM / CMM Reference Library · {ac.name}</div>
+            <div className="center-bay">{ac.bayLocation}</div>
+          </div>
+          <span className={`badge badge-${ac.status}`}>{ac.status}</span>
+        </div>
+        <div className="pane active">
+          <ManualViewer manuals={ac.maintenanceManuals} />
+        </div>
+      </main>
+    );
+  }
+
+  if (activeView === 'inspections') {
+    return (
+      <main className="center">
+        <div className="center-head">
+          <div>
+            <div className="center-title">{ac.tailNumber} — Ground Inspection</div>
+            <div className="center-route">Walk-Around Checklist · {ac.name}</div>
+            <div className="center-bay">{ac.bayLocation}</div>
+          </div>
+          <span className={`badge badge-${ac.status}`}>{ac.status}</span>
+        </div>
+        <div className="pane active">
+          <InspectionChecklist inspections={inspections} onToggle={onToggleInspection} />
+        </div>
+      </main>
+    );
+  }
+
+  // Default: Fleet Overview with tabs
   const tabs = [
     { id: 'ov', label: 'Overview' },
+    { id: 'int', label: 'Internal Systems', count: Object.keys(ac.internalComponents || {}).length },
     { id: 'pr', label: 'Predictions' },
-    { id: 'wo', label: 'Work Orders' },
+    { id: 'wo', label: 'Work Orders', count: ac.workOrders.length },
   ];
 
   return (
     <main className="center">
       <div className="center-head">
         <div>
-          <div className="center-title">{ac.tailNumber} &mdash; {ac.name}</div>
+          <div className="center-title">{ac.tailNumber} — {ac.name}</div>
           <div className="center-route">{ac.route}</div>
+          <div className="center-bay">{ac.bayLocation}</div>
         </div>
         <span className={`badge badge-${ac.status}`}>{ac.status}</span>
       </div>
@@ -66,15 +134,17 @@ export default function CenterPanel({ aircraft, onRefresh, onRefreshAll }) {
             onClick={() => setActiveTab(t.id)}
           >
             {t.label}
+            {t.count !== undefined && <span className="tab-count">{t.count}</span>}
           </button>
         ))}
       </div>
 
       {/* Overview */}
       <div className={`pane${activeTab === 'ov' ? ' active' : ''}`}>
+        <div className="section-title">External Systems</div>
         <div className="comp-grid">
           {Object.entries(ac.components).map(([name, comp]) => (
-            <div className="comp-card" key={name}>
+            <div className={`comp-card ${trendClass(comp.trend)}`} key={name}>
               <Gauge value={comp.health} />
               <div>
                 <div className="comp-name">{name}</div>
@@ -103,6 +173,11 @@ export default function CenterPanel({ aircraft, onRefresh, onRefreshAll }) {
         ))}
       </div>
 
+      {/* Internal Systems */}
+      <div className={`pane${activeTab === 'int' ? ' active' : ''}`}>
+        <InternalSystems aircraft={ac} />
+      </div>
+
       {/* Predictions */}
       <div className={`pane${activeTab === 'pr' ? ' active' : ''}`}>
         <PredictionChart predictions={ac.predictions} />
@@ -119,7 +194,7 @@ export default function CenterPanel({ aircraft, onRefresh, onRefreshAll }) {
               <div className="wo-bar" style={{ background: priorityColor(wo.priority) }} />
               <div>
                 <div className="wo-title">{wo.title}</div>
-                <div className="wo-meta">{wo.type} &middot; {wo.priority.toUpperCase()}</div>
+                <div className="wo-meta">{wo.type} · {wo.priority.toUpperCase()}</div>
               </div>
               <div className="wo-days" style={{ color: daysColor(wo.days) }}>+{wo.days}d</div>
               <button className="wo-complete" onClick={() => handleCompleteWO(i)}>
