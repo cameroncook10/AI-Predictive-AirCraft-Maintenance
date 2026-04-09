@@ -2,24 +2,25 @@ export default function Gauge({ value }) {
   const r = 18;
   const circ = 2 * Math.PI * r;
   const arc = (value / 100) * circ;
-  const col = value < 60 ? '#e84040' : value < 80 ? '#f5a623' : '#22c87a';
+  const col = value < 60 ? '#ff4757' : value < 80 ? '#ffb020' : '#00d68f';
 
   return (
-    <svg width="46" height="46" viewBox="0 0 46 46">
-      <circle cx="23" cy="23" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3.5" />
+    <svg width="48" height="48" viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
+      <circle cx="24" cy="24" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3.5" />
       <circle
-        cx="23" cy="23" r={r}
+        cx="24" cy="24" r={r}
         fill="none" stroke={col} strokeWidth="3.5"
         strokeDasharray={`${arc.toFixed(1)} ${circ.toFixed(1)}`}
         strokeLinecap="round"
-        transform="rotate(-90 23 23)"
+        transform="rotate(-90 24 24)"
+        style={{ filter: `drop-shadow(0 0 4px ${col}40)`, transition: 'stroke-dasharray 0.6s ease' }}
       />
       <text
-        x="23" y="27"
+        x="24" y="28"
         textAnchor="middle"
-        fontSize="10" fontWeight="600"
+        fontSize="11" fontWeight="700"
         fill={col}
-        fontFamily="'IBM Plex Mono',monospace"
+        fontFamily="'JetBrains Mono',monospace"
       >
         {value}
       </text>
