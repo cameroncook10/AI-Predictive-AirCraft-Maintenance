@@ -1,0 +1,4 @@
+# Ignore secret environment files and API key files.
+# Do not commit actual API keys or secret values.
+.env
+*.env
