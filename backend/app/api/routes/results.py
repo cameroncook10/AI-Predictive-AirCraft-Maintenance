@@ -1,27 +1,35 @@
 """
 Read-only access to stored inspection metadata for the UI or export.
-
-TODO:
-- Call `storage.load_results`; support query params (limit, offset, run_id).
-- Return JSON list compatible with the demo table or timeline view.
-
-Expected role:
-- Decouple "what we stored" from "how we ran the model"; safe to cache read-only for demos.
 """
 
-from fastapi import APIRouter, HTTPException
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+
+from app.api.schemas.inspection import InspectionRecord, IssueType, ResultsListResponse
+from app.core.config import Settings, get_settings
+from app.services import storage
 
 router = APIRouter(prefix="/results", tags=["results"])
 
 
-@router.get("")
-async def list_results():
-    # TODO: Return real list from storage; add response_model when schemas exist.
-    """
-    Expected:
-    - Return recent inspection rows: frame reference, timestamp, issue_type, confidence, flagged.
-
-    Query params (optional later):
-    - `limit`, `since`, `issue_type` filter for demos with many runs.
-    """
-    raise HTTPException(status_code=501, detail="Not implemented")
+@router.get("", response_model=ResultsListResponse)
+async def list_results(
+    settings: Annotated[Settings, Depends(get_settings)],
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    run_id: str | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    issue_type: IssueType | None = Query(default=None),
+):
+    rows, total = storage.load_results(
+        settings,
+        limit=limit,
+        offset=offset,
+        run_id=run_id,
+        since=since,
+        issue_type=issue_type.value if issue_type is not None else None,
+    )
+    items = [InspectionRecord.model_validate(r) for r in rows]
+    return ResultsListResponse(items=items, total=total)

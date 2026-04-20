@@ -1,24 +1,37 @@
 """
 Call the vision model / VLM and normalize output to the demo category set.
 
-TODO:
-- Batch or single-frame API to your model; build prompt for exterior defect check.
-- Map raw model output to fixed labels: dent, crack, corrosion, paint_damage, no_issue (+ confidence).
-- Handle timeouts and model errors with a controlled fallback response.
-
-Expected role:
-- Only place that talks to the ML stack; routes call this after frames are chosen.
+Stub implementation returns structured rows without calling MODEL_URL until wired.
 """
 
+import uuid
+from datetime import datetime, timezone
 
-def analyze_frames(*args, **kwargs):
-    # TODO: Signature e.g. analyze_frames(frames: list[bytes]) -> list[InspectionResultDict].
-    """
-    Expected:
-    - Accept one or more still images aligned with the demo flow.
-    - Return structured dicts (or Pydantic models) suitable for `storage.save_result` and the UI.
+from app.core.config import Settings
 
-    Returns:
-    - Per-frame or per-run results: issue_type, confidence, optional free text, flagged boolean.
+
+def analyze_frames(
+    frame_paths: list[str],
+    *,
+    run_id: str,
+    settings: Settings,
+) -> list[dict]:
     """
-    ...
+    Produce one inspection row per input path. Replace with real VLM calls later.
+    """
+    now = datetime.now(timezone.utc)
+    out: list[dict] = []
+    for path in frame_paths:
+        out.append(
+            {
+                "id": str(uuid.uuid4()),
+                "frame_path": path,
+                "timestamp": now,
+                "issue_type": "no_issue",
+                "confidence": 0.0,
+                "flagged": False,
+                "run_id": run_id,
+                "notes": f"stub inference (model_url={settings.model_url})",
+            }
+        )
+    return out

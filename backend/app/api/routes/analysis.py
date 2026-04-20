@@ -1,28 +1,57 @@
 """
 Run the inspection pipeline on selected frames for a job or session.
-
-TODO:
-- Orchestrate: `input_source` → `select_frames` → `filter_frame` → `analyze_frames` → `save_result`.
-- Accept run parameters (source path, max frames, thresholds) via body or query.
-- Return summary for UI: latest frame thumbnail path, label, confidence, flagged.
-
-Expected role:
-- Single "go" endpoint for the demo E2E button; no long blocking without streaming if video is large (optional: background task).
-
-TODO (ops): Consider returning 202 + job id if you move work to a background queue later.
 """
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.api.schemas.inspection import (
+    AnalysisRunRequest,
+    AnalysisRunResponse,
+    InspectionRecord,
+)
+from app.core.config import Settings, get_settings
+from app.services import model_pipeline, storage
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
-@router.post("/run")
-async def run_inspection():
-    # TODO: Request model for options; invoke service pipeline; return structured response (not 501).
-    """
-    Expected:
-    - Trigger one inspection pass over configured or uploaded media.
-    - Response body matches what the minimal UI needs (result + optional list of per-frame outcomes).
-    """
-    raise HTTPException(status_code=501, detail="Not implemented")
+@router.post("/run", response_model=AnalysisRunResponse)
+async def run_inspection(
+    body: AnalysisRunRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    run_id = body.run_id or str(uuid4())
+    max_n = body.max_frames or 10
+
+    if body.frame_paths:
+        paths = list(body.frame_paths)[:max_n]
+    elif body.video_path:
+        paths = [body.video_path]
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide video_path or frame_paths",
+        )
+
+    raw_rows = model_pipeline.analyze_frames(paths, run_id=run_id, settings=settings)
+    records: list[InspectionRecord] = []
+    for row in raw_rows:
+        storage.save_result(row, settings)
+        records.append(InspectionRecord.model_validate(row))
+
+    if not records:
+        raise HTTPException(status_code=500, detail="analysis produced no records")
+
+    best = max(records, key=lambda r: r.confidence)
+    flagged_any = any(r.flagged for r in records)
+
+    return AnalysisRunResponse(
+        run_id=run_id,
+        summary_issue_type=best.issue_type,
+        summary_confidence=best.confidence,
+        flagged=flagged_any,
+        per_frame=records,
+    )
