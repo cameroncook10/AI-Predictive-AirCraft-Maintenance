@@ -1,16 +1,61 @@
 """
-Pydantic (or similar) shapes for JSON bodies and inspection records.
-
-TODO:
-- Add models for: multipart frame upload, optional job/run id, list of stored results.
-- Constrain `issue_type` to the demo enum (e.g. dent, crack, corrosion, paint_damage, no_issue).
-- Add `confidence` float and timestamps for OpenAPI and validation.
-
-Expected role:
-- Used by route handlers as `response_model` / body types so the contract matches the UI.
+Pydantic shapes for JSON bodies and inspection records.
 """
 
-# TODO: Example types to implement:
-# - FrameIngestRequest / FrameIngestResponse
-# - AnalysisRunRequest (e.g. video path or session id) / AnalysisRunResponse
-# - InspectionRecord (frame filename, timestamp, issue_type, confidence, flagged: bool)
+from datetime import datetime
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class IssueType(str, Enum):
+    dent = "dent"
+    crack = "crack"
+    corrosion = "corrosion"
+    paint_damage = "paint_damage"
+    no_issue = "no_issue"
+
+
+class InspectionRecord(BaseModel):
+    id: str
+    frame_path: str
+    timestamp: datetime
+    issue_type: IssueType
+    confidence: float = Field(ge=0.0, le=1.0)
+    flagged: bool
+    run_id: str | None = None
+    notes: str | None = None
+
+
+class FrameIngestRequest(BaseModel):
+    """Register server-local media; no file bytes in JSON."""
+
+    video_path: str | None = None
+    run_id: str | None = None
+
+
+class FrameIngestResponse(BaseModel):
+    frame_id: str
+    frame_path: str
+    run_id: str | None = None
+    message: str | None = None
+
+
+class AnalysisRunRequest(BaseModel):
+    video_path: str | None = None
+    run_id: str | None = None
+    max_frames: int | None = Field(default=10, ge=1, le=100)
+    frame_paths: list[str] | None = None
+
+
+class AnalysisRunResponse(BaseModel):
+    run_id: str
+    summary_issue_type: IssueType
+    summary_confidence: float
+    flagged: bool
+    per_frame: list[InspectionRecord]
+
+
+class ResultsListResponse(BaseModel):
+    items: list[InspectionRecord]
+    total: int

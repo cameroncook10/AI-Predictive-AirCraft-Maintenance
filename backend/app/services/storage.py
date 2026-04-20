@@ -1,29 +1,79 @@
 """
-Persist frames and inspection metadata for the demo (folder + JSON or SQLite).
+Persist frames and inspection metadata for the demo (folder + JSONL).
 
-TODO:
-- `save_frame`: write image bytes to `data/frames` with stable filenames; return path or id.
-- `save_result`: append one JSON line / row with filename, timestamp, issue_type, confidence.
-- `load_results`: read back for `GET /api/results` (sort by time, optional limit).
-
-Expected role:
-- Replace a full DB for the demo; keep I/O out of route handlers.
+Routes and the analysis pipeline call these functions; replace internals with SQLite later if needed.
 """
 
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
-def save_frame(*args, **kwargs):
-    # TODO: Explicit args (frame_bytes, ext, run_id) -> str path.
-    """Expected: Persist a single frame file; return its relative or absolute path for metadata."""
-    ...
-
-
-def save_result(*args, **kwargs):
-    # TODO: Accept a dict or schema instance matching inspection output.
-    """Expected: Append or upsert inspection metadata linked to a frame path and run."""
-    ...
+from app.core.config import Settings
 
 
-def load_results(*args, **kwargs):
-    # TODO: Optional filters (run_id, since timestamp); return list[dict].
-    """Expected: Return stored rows for the results API and optional export."""
-    ...
+def save_frame(frame_bytes: bytes, ext: str, run_id: str | None, settings: Settings) -> str:
+    settings.frames_dir.mkdir(parents=True, exist_ok=True)
+    fid = str(uuid.uuid4())
+    safe_ext = ext if ext.startswith(".") else (f".{ext}" if ext else ".bin")
+    path = settings.frames_dir / f"{fid}{safe_ext}"
+    path.write_bytes(frame_bytes)
+    return str(path.resolve())
+
+
+def save_result(record: dict[str, Any], settings: Settings) -> None:
+    settings.results_db.parent.mkdir(parents=True, exist_ok=True)
+    line = dict(record)
+    ts = line.get("timestamp")
+    if isinstance(ts, datetime):
+        line["timestamp"] = ts.astimezone(timezone.utc).isoformat()
+    with settings.results_db.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(line, default=str) + "\n")
+
+
+def load_results(
+    settings: Settings,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    run_id: str | None = None,
+    since: datetime | None = None,
+    issue_type: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    if not settings.results_db.is_file():
+        return [], 0
+    rows: list[dict[str, Any]] = []
+    with settings.results_db.open(encoding="utf-8") as f:
+        for raw in f:
+            raw = raw.strip()
+            if not raw:
+                continue
+            rows.append(json.loads(raw))
+
+    filtered: list[dict[str, Any]] = []
+    for r in rows:
+        if run_id is not None and r.get("run_id") != run_id:
+            continue
+        if issue_type is not None and r.get("issue_type") != issue_type:
+            continue
+        if since is not None:
+            ts_raw = r.get("timestamp")
+            if not ts_raw:
+                continue
+            try:
+                ts_s = str(ts_raw).replace("Z", "+00:00")
+                parsed = datetime.fromisoformat(ts_s)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                s = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+                if parsed < s:
+                    continue
+            except ValueError:
+                continue
+        filtered.append(r)
+
+    filtered.sort(key=lambda x: str(x.get("timestamp") or ""), reverse=True)
+    total = len(filtered)
+    page = filtered[offset : offset + limit]
+    return page, total
