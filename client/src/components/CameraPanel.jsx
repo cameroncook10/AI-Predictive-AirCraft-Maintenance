@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import LiveEndoscope from './LiveEndoscope';
 
 export default function CameraPanel({ cameraData }) {
   const [selectedZone, setSelectedZone] = useState(null);
+  const [viewMode, setViewMode] = useState('simulated');
 
   if (!cameraData) return <div className="empty-state">Loading camera data...</div>;
 
@@ -10,7 +12,27 @@ export default function CameraPanel({ cameraData }) {
 
   return (
     <div className="fade-in">
-      {/* Camera Status */}
+      {/* Mode Selector */}
+      <div className="tabs" style={{ marginBottom: '20px' }}>
+        <button 
+          className={`tab ${viewMode === 'simulated' ? 'active' : ''}`}
+          onClick={() => setViewMode('simulated')}
+        >
+          Gyroscopic Control (Simulated)
+        </button>
+        <button 
+          className={`tab ${viewMode === 'live' ? 'active' : ''}`}
+          onClick={() => setViewMode('live')}
+        >
+          USB Endoscope (Live)
+        </button>
+      </div>
+
+      {viewMode === 'live' ? (
+        <LiveEndoscope />
+      ) : (
+        <>
+          {/* Camera Status */}
       <div className="camera-status">
         <div className="cam-stat">
           <div className="cam-stat-label">Battery</div>
@@ -77,6 +99,8 @@ export default function CameraPanel({ cameraData }) {
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }
