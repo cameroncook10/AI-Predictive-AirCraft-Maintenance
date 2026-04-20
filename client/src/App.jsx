@@ -4,6 +4,7 @@ import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import CenterPanel from './components/CenterPanel';
 import RightPanel from './components/RightPanel';
+import AIAssistant from './components/AIAssistant';
 
 export default function App() {
   const [fleet, setFleet] = useState([]);
@@ -13,6 +14,7 @@ export default function App() {
   const [activeView, setActiveView] = useState('overview');
   const [cameraData, setCameraData] = useState(null);
   const [inspections, setInspections] = useState(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([fetchFleet(), fetchMetrics()]).then(([f, m]) => {
@@ -91,6 +93,11 @@ export default function App() {
         />
         <RightPanel aircraft={aircraft} />
       </div>
+      <AIAssistant
+        aircraft={aircraft}
+        isOpen={aiOpen}
+        onToggle={() => setAiOpen((o) => !o)}
+      />
     </div>
   );
 }

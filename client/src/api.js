@@ -54,3 +54,16 @@ export async function completeWorkOrder(tail, index) {
   });
   return res.json();
 }
+
+export async function sendChatMessage(messages, aircraftContext = null) {
+  const res = await fetch(`${BASE}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      aircraft_context: aircraftContext ? JSON.stringify(aircraftContext) : null,
+    }),
+  });
+  if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+  return res.json();
+}
