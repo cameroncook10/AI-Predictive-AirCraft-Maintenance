@@ -14,6 +14,7 @@ export default function App() {
   const [activeView, setActiveView] = useState('overview');
   const [cameraData, setCameraData] = useState(null);
   const [inspections, setInspections] = useState(null);
+  const [exteriorZonePhotos, setExteriorZonePhotos] = useState([]);
   const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function App() {
   const loadInspections = useCallback(async (tail) => {
     const data = await fetchInspections(tail);
     setInspections(data.checklist);
+    setExteriorZonePhotos(data.exterior_zone_photos || []);
   }, []);
 
   useEffect(() => {
@@ -46,6 +48,34 @@ export default function App() {
       loadInspections(selected);
     }
   }, [selected, loadAircraft, loadCamera, loadInspections]);
+
+  /** While Exterior capture or Ground Inspection is open, keep camera + zone photos in sync with remote/phone. */
+  useEffect(() => {
+    if (!selected) return;
+    if (activeView !== 'camera' && activeView !== 'inspections') return;
+
+    const LIVE_POLL_MS = 1500;
+
+    const pullZoneData = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void loadCamera(selected);
+      void loadInspections(selected);
+    };
+    pullZoneData();
+    const id = setInterval(pullZoneData, LIVE_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') pullZoneData();
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      clearInterval(id);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [selected, activeView, loadCamera, loadInspections]);
 
   const handleSelect = (tail) => setSelected(tail);
 
@@ -87,6 +117,7 @@ export default function App() {
           activeView={activeView}
           cameraData={cameraData}
           inspections={inspections}
+          exteriorZonePhotos={exteriorZonePhotos}
           onRefresh={refreshAircraft}
           onRefreshAll={refreshAll}
           onToggleInspection={handleToggleInspection}

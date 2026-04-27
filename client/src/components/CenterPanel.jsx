@@ -5,7 +5,7 @@ import CameraPanel from './CameraPanel';
 import InternalSystems from './InternalSystems';
 import ManualViewer from './ManualViewer';
 import InspectionChecklist from './InspectionChecklist';
-import { acknowledgeAlert, completeWorkOrder } from '../api';
+import { acknowledgeAlert, completeWorkOrder, createWorkOrder } from '../api';
 
 function healthColor(h) {
   if (h < 60) return 'var(--red)';
@@ -29,8 +29,14 @@ function daysColor(d) {
   return 'var(--muted)';
 }
 
-export default function CenterPanel({ aircraft, activeView, cameraData, inspections, onRefresh, onRefreshAll, onToggleInspection }) {
+export default function CenterPanel({ aircraft, activeView, cameraData, inspections, exteriorZonePhotos, onRefresh, onRefreshAll, onToggleInspection }) {
   const [activeTab, setActiveTab] = useState('ov');
+  const [woTitle, setWoTitle] = useState('');
+  const [woType, setWoType] = useState('Corrective');
+  const [woPriority, setWoPriority] = useState('medium');
+  const [woDays, setWoDays] = useState(7);
+  const [woSubmitting, setWoSubmitting] = useState(false);
+  const [woError, setWoError] = useState(null);
 
   if (!aircraft) {
     return (
@@ -52,20 +58,47 @@ export default function CenterPanel({ aircraft, activeView, cameraData, inspecti
     onRefresh();
   };
 
+  const handleAddWorkOrder = async (e) => {
+    e.preventDefault();
+    if (!woTitle.trim()) {
+      setWoError('Enter a title for the work order.');
+      return;
+    }
+    setWoSubmitting(true);
+    setWoError(null);
+    try {
+      await createWorkOrder(ac.tailNumber, {
+        title: woTitle.trim(),
+        type: woType,
+        priority: woPriority,
+        days: Number(woDays) || 7,
+      });
+      setWoTitle('');
+      setWoType('Corrective');
+      setWoPriority('medium');
+      setWoDays(7);
+      onRefresh();
+    } catch (err) {
+      setWoError(err?.message || String(err));
+    } finally {
+      setWoSubmitting(false);
+    }
+  };
+
   // For camera, manuals, inspections — render full-page views
   if (activeView === 'camera') {
     return (
       <main className="center">
         <div className="center-head">
           <div>
-            <div className="center-title">{ac.tailNumber} — Camera System</div>
-            <div className="center-route">Gyroscopic Inspection Camera · {ac.name}</div>
+            <div className="center-title">{ac.tailNumber} — Exterior capture</div>
+            <div className="center-route">Browser camera / upload · Gemini exterior inspection · {ac.name}</div>
             <div className="center-bay">{ac.bayLocation}</div>
           </div>
           <span className={`badge badge-${ac.status}`}>{ac.status}</span>
         </div>
         <div className="pane active">
-          <CameraPanel cameraData={cameraData} />
+          <CameraPanel cameraData={cameraData} aircraft={ac} onExteriorAnalyzed={onRefresh} />
         </div>
       </main>
     );
@@ -101,7 +134,13 @@ export default function CenterPanel({ aircraft, activeView, cameraData, inspecti
           <span className={`badge badge-${ac.status}`}>{ac.status}</span>
         </div>
         <div className="pane active">
-          <InspectionChecklist inspections={inspections} onToggle={onToggleInspection} />
+          <InspectionChecklist
+            inspections={inspections}
+            exteriorZonePhotos={exteriorZonePhotos || []}
+            onToggle={onToggleInspection}
+            aircraftTail={ac.tailNumber}
+            onRefreshExterior={onRefresh}
+          />
         </div>
       </main>
     );
@@ -185,6 +224,50 @@ export default function CenterPanel({ aircraft, activeView, cameraData, inspecti
 
       {/* Work Orders */}
       <div className={`pane${activeTab === 'wo' ? ' active' : ''}`}>
+        <div className="section-title">New work order</div>
+        <form className="wo-add-form" onSubmit={handleAddWorkOrder}>
+          <input
+            className="wo-add-input wo-add-title"
+            type="text"
+            placeholder="Title (e.g. Replace hydraulic line per AMM)"
+            value={woTitle}
+            onChange={(e) => setWoTitle(e.target.value)}
+            maxLength={220}
+            autoComplete="off"
+          />
+          <div className="wo-add-row">
+            <select className="wo-add-select" value={woType} onChange={(e) => setWoType(e.target.value)} aria-label="Work order type">
+              <option value="Inspection">Inspection</option>
+              <option value="Corrective">Corrective</option>
+              <option value="Scheduled">Scheduled</option>
+              <option value="Deferred">Deferred</option>
+            </select>
+            <select className="wo-add-select" value={woPriority} onChange={(e) => setWoPriority(e.target.value)} aria-label="Priority">
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <label className="wo-add-days-label">
+              <span className="wo-add-days-text">Due in</span>
+              <input
+                className="wo-add-days"
+                type="number"
+                min={1}
+                max={365}
+                value={woDays}
+                onChange={(e) => setWoDays(Number(e.target.value))}
+              />
+              <span className="wo-add-days-text">days</span>
+            </label>
+          </div>
+          {woError && <div className="wo-add-error">{woError}</div>}
+          <button type="submit" className="wo-add-submit" disabled={woSubmitting}>
+            {woSubmitting ? 'Adding…' : 'Add work order'}
+          </button>
+        </form>
+
+        <div className="section-title" style={{ marginTop: 20 }}>Open work orders</div>
         <div className="wo-list">
           {ac.workOrders.length === 0 && (
             <div className="empty-state">No open work orders</div>

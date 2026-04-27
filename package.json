@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "concurrently \"npm run backend\" \"npm run client\"",
     "client": "cd client && npm run dev",
+    "backend": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8765",
+    "backend:reload": "cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8765",
+    "backend:stable": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8765",
     "server": "cd server && node index.js",
     "build": "cd client && npm run build",
-    "start": "npm run server"
+    "start": "npm run backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

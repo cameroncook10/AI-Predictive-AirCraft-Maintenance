@@ -34,7 +34,7 @@ export default function Topbar({ aircraft }) {
         </div>
         <div>
           <div className="topbar-title">AeroMind Ground Ops</div>
-          <div className="topbar-sub">Maintenance Engineering Platform · LSTM + GBT Model</div>
+          <div className="topbar-sub">Maintenance Engineering Platform</div>
         </div>
       </div>
 

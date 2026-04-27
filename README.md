@@ -18,12 +18,14 @@ Run the server with:
 
 ```bash
 cd backend
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8765
 ```
+
+On Windows, if you see `WinError 10013` on port 8000, Hyper-V or excluded port ranges often block it; **8765** avoids that. Use any free port and point the Vite proxy in `client/vite.config.js` at the same port.
 
 ## Backend Architecture
 
-The backend is a **FastAPI** application that powers an AI-driven aircraft exterior inspection demo. It ingests video or still frames, filters and samples them, sends them to a vision language model (VLM) for defect detection, and stores the results for the frontend to display.
+The backend is a **FastAPI** application that powers an AI-driven aircraft exterior inspection demo. It ingests still images from uploads, sends them to **Google Gemini** (vision) for defect-style assessment, and stores the results for the frontend to display.
 
 ### Directory Structure
 
@@ -68,7 +70,7 @@ All HTTP-facing code lives here. Routes handle request/response only and delegat
 | File | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
 | `routes/frames.py` | `/api/frames` | POST | Accepts a still-image upload or a `video_path` reference for server-local media. Validates input and calls `storage.save_frame`. |
-| `routes/analysis.py` | `/api/analysis/run` | POST | Single "go" endpoint that triggers the full inspection pipeline: input source → frame extraction → filtering → VLM analysis → save results. Returns a summary the UI can render. |
+| `routes/analysis.py` | `/api/analysis/run` | POST | Triggers inspection on saved image paths: **Gemini** multimodal analysis → save results. |
 | `routes/results.py` | `/api/results` | GET | Returns stored inspection records (frame reference, timestamp, issue type, confidence, flagged status). Supports optional query params like `limit`, `since`, and `issue_type`. |
 
 #### Schemas — `app/api/schemas/inspection.py`
@@ -99,9 +101,9 @@ Pure domain logic with no FastAPI imports. Each module handles one step of the i
 - **Luminance check** — mean brightness too low → skip.
 - **Duplicate rejection** — histogram or MSE comparison to previous kept frame → skip.
 
-#### `model_pipeline.py` — VLM Inference
+#### `model_pipeline.py` — Gemini (exterior stills)
 
-`analyze_frames(frames)` is the only module that talks to the ML stack. It sends one or more still images to the vision model, maps raw output to the fixed label set (`dent`, `crack`, `corrosion`, `paint_damage`, `no_issue` + confidence score), and handles timeouts and model errors with controlled fallback responses.
+`analyze_frames` is the module that calls **Google Gemini** for one or more saved stills, maps the model JSON to the fixed label set (`dent`, `crack`, `corrosion`, `paint_damage`, `no_issue`) plus confidence, and returns rows the API persists.
 
 #### `storage.py` — Persistence
 
@@ -117,7 +119,7 @@ Handles all I/O for the demo (folder-based + JSON or SQLite):
 
 - `FRAMES_DIR` — where extracted frames are saved (default `data/frames`).
 - `RESULTS_DB` — path to the results store (JSON file or SQLite DB).
-- `MODEL_URL` — endpoint for the VLM.
+- `GEMINI_API_KEY` / `GEMINI_VISION_MODEL` — Google Generative AI for chat and exterior image analysis.
 - Frame sampling interval, blur thresholds, and other tuning knobs.
 
 Exposed via a cached `get_settings()` singleton for dependency injection across routes and services.
@@ -137,7 +139,7 @@ Client POST /api/analysis/run
   frame_filtering.filter_frame(frame, prev)   ← drop blurry / dark / duplicate
        │
        ▼
-  model_pipeline.analyze_frames(kept_frames)   ← VLM returns labels + confidence
+  model_pipeline.analyze_frames(kept_frames)   ← Gemini returns labels + confidence
        │
        ▼
   storage.save_result(result)                  ← persist to disk

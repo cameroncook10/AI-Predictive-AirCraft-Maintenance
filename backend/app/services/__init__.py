@@ -1,1 +1,1 @@
-"""Domain services: video ingest, frames, model, persistence (no FastAPI imports here)."""
+"""Domain services: frame storage, Gemini exterior vision, persistence (no FastAPI imports here)."""

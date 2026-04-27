@@ -1,5 +1,9 @@
+# Prefer a venv in this folder: python -m venv .venv  then  .venv\Scripts\activate  then  pip install -r requirements.txt
+# (Avoids Windows errors writing to C:\Python312\Scripts when using system Python.)
 fastapi
 uvicorn[standard]
 google-genai
 python-dotenv
 pydantic-settings
+python-multipart
+pillow

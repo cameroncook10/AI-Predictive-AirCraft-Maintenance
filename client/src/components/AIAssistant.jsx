@@ -85,7 +85,11 @@ export default function AIAssistant({ aircraft, isOpen, onToggle }) {
       const data = await sendChatMessage(apiMessages, aircraft || null);
       setMessages((prev) => [...prev, { role: 'model', content: data.reply }]);
     } catch (err) {
-      setError('Failed to reach AeroMind AI. Is the backend running?');
+      const msg = err?.message || String(err);
+      setError(
+        msg.trim() ||
+          'Failed to reach AeroMind AI. Is the backend running? (Vite must proxy to the API on port 8765.)',
+      );
       setMessages((prev) => prev.slice(0, -1)); // remove the user message on error
     } finally {
       setLoading(false);

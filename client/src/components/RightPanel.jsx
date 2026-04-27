@@ -11,20 +11,6 @@ export default function RightPanel({ aircraft }) {
 
   return (
     <aside className="rpanel">
-      {/* AI Model */}
-      <div className="rcard">
-        <div className="rcard-label">
-          <svg viewBox="0 0 24 24"><path d="M21 10.12h-6.78l2.74-2.82-2.2-2.2L12 7.86V1H10v6.86L7.24 5.1l-2.2 2.2 2.74 2.82H1v2h6.78L5.04 14.94l2.2 2.2L10 14.38V21h2v-6.62l2.76 2.76 2.2-2.2-2.74-2.82H21v-2z"/></svg>
-          AI Model
-        </div>
-        <div className="rrow"><span className="rrow-k">Architecture</span><span className="rrow-v">LSTM + GBT</span></div>
-        <div className="rrow"><span className="rrow-k">Test accuracy</span><span className="rrow-v" style={{ color: 'var(--green)' }}>91.3%</span></div>
-        <div className="rrow"><span className="rrow-k">Confidence</span><span className="rrow-v">{ac.aiConfidence}</span></div>
-        <div className="rrow"><span className="rrow-k">Features</span><span className="rrow-v">847</span></div>
-        <div className="rrow"><span className="rrow-k">Sensor points</span><span className="rrow-v">2.1M</span></div>
-        <div className="rrow"><span className="rrow-k">Last trained</span><span className="rrow-v">6d ago</span></div>
-      </div>
-
       {/* Predicted Savings */}
       <div className="rcard">
         <div className="rcard-label">

@@ -2,11 +2,13 @@
 FastAPI application entry: mounts routers and exposes process health.
 """
 
-from fastapi import FastAPI
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analysis, frames, results, chat
-from app.core.config import get_settings
+from app.api.routes import analysis, chat, fleet, frames, results
+from app.core.config import Settings, get_settings
 
 _settings = get_settings()
 
@@ -19,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(fleet.router, prefix="/api")
 app.include_router(frames.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(results.router, prefix="/api")
@@ -26,6 +29,11 @@ app.include_router(chat.router, prefix="/api")
 
 
 @app.get("/health")
-def health():
-    """Return 200 with a small JSON body for smoke checks."""
-    return {"status": "ok"}
+def health(settings: Annotated[Settings, Depends(get_settings)]):
+    """Smoke check: Gemini model id and whether an API key is set (key value is never returned)."""
+    return {
+        "status": "ok",
+        "chat_engine": "gemini",
+        "gemini_vision_model": settings.gemini_vision_model,
+        "gemini_api_configured": bool((settings.gemini_api_key or "").strip()),
+    }

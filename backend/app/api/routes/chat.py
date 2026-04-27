@@ -1,18 +1,13 @@
 """
-POST /api/chat — Gemini AI assistant endpoint.
-
-Accepts a list of messages (with role + content) and an optional aircraft
-tail number for context injection. Returns the model's reply as plain text.
+POST /api/chat — Google Gemini (AeroMind AI assistant).
 """
 
-import os
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from typing import Annotated, Any
 
-load_dotenv()
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from app.core.config import Settings, get_settings
 
 router = APIRouter()
 
@@ -28,58 +23,74 @@ SYSTEM_INSTRUCTION = (
 
 
 class ChatMessage(BaseModel):
-    role: str   # 'user' or 'model'
+    role: str
     content: str
 
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    aircraft_context: str | None = None   # optional JSON string of aircraft data
+    aircraft_context: str | None = None
 
 
 class ChatResponse(BaseModel):
     reply: str
 
 
-def _build_client() -> genai.Client:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
-    return genai.Client(api_key=api_key)
+def _demo_reply() -> ChatResponse:
+    return ChatResponse(
+        reply=(
+            "[Demo mode — set GEMINI_API_KEY in backend/.env and install google-genai for live AeroMind AI.] "
+            "I would normally analyze your question using the selected aircraft context. "
+            "Until then, use the dashboard panels for health, alerts, and manuals."
+        )
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    client = _build_client()
+def chat(req: ChatRequest, settings: Annotated[Settings, Depends(get_settings)]):
+    api_key = (settings.gemini_api_key or "").strip()
+    if not api_key:
+        return _demo_reply()
 
-    # Build history for multi-turn conversation
-    history: list[types.Content] = []
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return _demo_reply()
 
-    # Inject aircraft context as first user/model exchange if provided
+    client = genai.Client(api_key=api_key)
+
+    history: list[Any] = []
+
     if req.aircraft_context:
-        history.append(types.Content(
-            role="user",
-            parts=[types.Part(text=f"[AIRCRAFT CONTEXT]\n{req.aircraft_context}")]
-        ))
-        history.append(types.Content(
-            role="model",
-            parts=[types.Part(text="Understood. I have the aircraft data loaded and ready to assist.")]
-        ))
+        history.append(
+            types.Content(
+                role="user",
+                parts=[types.Part(text=f"[AIRCRAFT CONTEXT]\n{req.aircraft_context}")],
+            )
+        )
+        history.append(
+            types.Content(
+                role="model",
+                parts=[types.Part(text="Understood. I have the aircraft data loaded and ready to assist.")],
+            )
+        )
 
-    # Append the conversation messages
     for msg in req.messages:
         role = "user" if msg.role == "user" else "model"
-        history.append(types.Content(
-            role=role,
-            parts=[types.Part(text=msg.content)]
-        ))
+        history.append(
+            types.Content(
+                role=role,
+                parts=[types.Part(text=msg.content)],
+            )
+        )
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=settings.gemini_vision_model,
             contents=history,
             config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
         )
-        return ChatResponse(reply=response.text)
+        return ChatResponse(reply=(response.text or "") if response.text is not None else "")
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}") from e

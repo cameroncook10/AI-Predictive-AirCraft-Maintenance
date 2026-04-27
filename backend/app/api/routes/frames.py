@@ -1,18 +1,33 @@
 """
-Ingest endpoints: receive uploads or register frames extracted server-side.
+Ingest still images from the client (multipart). Saved paths can be passed to POST /api/analysis/run.
+
+Server-side live video sampling is not used; the browser captures still photos instead.
 """
 
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 
 from app.api.schemas.inspection import FrameIngestRequest, FrameIngestResponse
 from app.core.config import Settings, get_settings
 from app.services import storage
 
 router = APIRouter(prefix="/frames", tags=["frames"])
+
+
+@router.get("/file/{filename}")
+def get_saved_frame_file(
+    filename: str,
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Serve a file from data/frames (uuid filename only)."""
+    path = storage.resolve_frame_file(settings, filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, media_type=None, filename=filename)
 
 
 @router.post("", response_model=FrameIngestResponse, status_code=201)
@@ -27,7 +42,7 @@ async def ingest_frame(
         if not payload.video_path:
             raise HTTPException(
                 status_code=422,
-                detail="video_path is required for application/json ingest",
+                detail="video_path (server-local image path) is required for application/json ingest",
             )
         return FrameIngestResponse(
             frame_id=str(uuid4()),
