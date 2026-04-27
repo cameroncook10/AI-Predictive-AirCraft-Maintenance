@@ -138,7 +138,7 @@ export default function AIAssistant({ aircraft, isOpen, onToggle }) {
             </div>
             <div className="ai-panel-status">
               <span className="live-dot" style={{ width: 6, height: 6 }} />
-              Gemini 2.0
+              Gemini 2.5 Flash
             </div>
           </div>
 

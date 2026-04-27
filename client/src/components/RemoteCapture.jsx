@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  analyzeAllPendingExterior,
-  analyzeExteriorImage,
   createWorkOrder,
   fetchAircraft,
   fetchCamera,
@@ -20,7 +18,7 @@ import {
 
 /**
  * Phone-only field page: /remote-capture?tail=…&zone_id=…
- * — exterior zone capture, analysis, and ground walk-around checklist (same API as the station).
+ * — zone capture to the station API and ground walk-around checklist (analysis runs on the station).
  */
 export default function RemoteCapture() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,11 +26,8 @@ export default function RemoteCapture() {
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const fileAnalyzeRef = useRef(null);
-  const fileZoneRef = useRef(null);
   const [stream, setStream] = useState(null);
   const [camError, setCamError] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const [zoneSaving, setZoneSaving] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
   const [lastOk, setLastOk] = useState(null);
@@ -57,7 +52,6 @@ export default function RemoteCapture() {
   const [woError, setWoError] = useState(null);
   const [woSubmitting, setWoSubmitting] = useState(false);
   const [woSuccess, setWoSuccess] = useState(null);
-  const [batchIdleMessage, setBatchIdleMessage] = useState(null);
 
   const [inspections, setInspections] = useState(null);
   const [inspLoading, setInspLoading] = useState(false);
@@ -150,15 +144,6 @@ export default function RemoteCapture() {
     };
   }, [activeTail]);
 
-  const refetchAfterAnalyze = useCallback(() => {
-    if (!activeTail) return;
-    const enc = encodeURIComponent(activeTail);
-    Promise.all([fetchCamera(enc), fetchAircraft(enc)]).then(([cam, ac]) => {
-      setZones(Array.isArray(cam?.zones) ? cam.zones : []);
-      setAcDetail(ac && ac.tailNumber ? ac : null);
-    }).catch(() => {});
-  }, [activeTail]);
-
   useEffect(() => {
     if (!selectedZone || !zones.length) return;
     if (!zones.some((z) => z.id === selectedZone)) setSelectedZone('');
@@ -232,28 +217,6 @@ export default function RemoteCapture() {
     [activeTail],
   );
 
-  const runAnalysisOnBlob = useCallback(
-    async (blob) => {
-      setAnalysisError(null);
-      setLastOk(null);
-      setBatchIdleMessage(null);
-      setAnalyzing(true);
-      try {
-        await analyzeExteriorImage(blob, {
-          aircraftContext: aircraftContext || undefined,
-          aircraftTail: activeTail,
-          zoneId: selectedZone || undefined,
-        });
-        setLastOk('analyze');
-      } catch (e) {
-        setAnalysisError(e?.message || String(e));
-      } finally {
-        setAnalyzing(false);
-      }
-    },
-    [aircraftContext, activeTail, selectedZone],
-  );
-
   const saveBlobToZone = useCallback(
     async (blob) => {
       if (!activeTail || !selectedZone) {
@@ -262,7 +225,6 @@ export default function RemoteCapture() {
       }
       setAnalysisError(null);
       setLastOk(null);
-      setBatchIdleMessage(null);
       setZoneSaving(true);
       try {
         await postExteriorZonePhoto(activeTail, selectedZone, blob);
@@ -300,39 +262,6 @@ export default function RemoteCapture() {
     grabFrameBlob((blob) => saveBlobToZone(blob));
   }, [grabFrameBlob, saveBlobToZone]);
 
-  const analyzeAllPending = useCallback(async () => {
-    if (!activeTail) {
-      setAnalysisError('Select an aircraft first.');
-      return;
-    }
-    setAnalysisError(null);
-    setLastOk(null);
-    setBatchIdleMessage(null);
-    setAnalyzing(true);
-    try {
-      const data = await analyzeAllPendingExterior(activeTail, {
-        aircraftContext: aircraftContext || undefined,
-      });
-      if (data?.per_frame?.length) {
-        setLastOk('analyze');
-        setBatchIdleMessage(data?.message || null);
-      } else {
-        setLastOk('idle');
-        setBatchIdleMessage(data?.message || 'No images to analyze.');
-      }
-      refetchAfterAnalyze();
-    } catch (e) {
-      setBatchIdleMessage(null);
-      setAnalysisError(e?.message || String(e));
-    } finally {
-      setAnalyzing(false);
-    }
-  }, [activeTail, aircraftContext, refetchAfterAnalyze]);
-
-  const analyzeFromVideo = useCallback(() => {
-    analyzeAllPending();
-  }, [analyzeAllPending]);
-
   const handleAddWorkOrder = async (e) => {
     e.preventDefault();
     if (!activeTail) {
@@ -366,7 +295,7 @@ export default function RemoteCapture() {
     }
   };
 
-  const zoneBusy = analyzing || zoneSaving;
+  const zoneBusy = zoneSaving;
   const activeZone = selectedZone ? zones.find((z) => z.id === selectedZone) : null;
   const workOrders = Array.isArray(acDetail?.workOrders) ? acDetail.workOrders : [];
 
@@ -402,7 +331,7 @@ export default function RemoteCapture() {
         <div>
           <div className="remote-capture-title">Exterior & walk-around (phone)</div>
           <p className="remote-capture-tagline">
-            Zone photos, Gemini analysis, and ground checklist — same Wi‑Fi as the station · use HTTPS
+            Zone photos to the station and ground checklist — same Wi‑Fi as the station · use HTTPS
           </p>
         </div>
       </div>
@@ -566,7 +495,7 @@ export default function RemoteCapture() {
               value={selectedZone}
               onChange={(e) => setSelectedZone(e.target.value)}
             >
-              <option value="">None (analyze only — optional zone tag)</option>
+              <option value="">— Select zone —</option>
               {zones.map((z) => (
                 <option key={z.id} value={z.id}>{z.name}</option>
               ))}
@@ -576,9 +505,7 @@ export default function RemoteCapture() {
             <p className="remote-capture-muted" style={{ marginTop: 4 }}>No camera zones for this tail.</p>
           )}
           <p className="remote-capture-muted" style={{ marginTop: 8, lineHeight: 1.45 }}>
-            <strong>Capture</strong> saves the frame to the selected zone.{' '}
-            <strong>Analyze (unreviewed captures)</strong> runs on every zone-saved <strong>unreviewed</strong> capture for this tail
-            (no Gemini result on file yet). Use a zone in the list if you need optional tagging on single-file upload.
+            <strong>Capture</strong> saves the current frame to the selected zone. Run analysis from the station PC if needed.
           </p>
         </div>
       )}
@@ -619,59 +546,6 @@ export default function RemoteCapture() {
           >
             {zoneSaving ? 'Saving…' : 'Capture'}
           </button>
-          <button
-            type="button"
-            className="cam-btn cam-btn-analyze-unreviewed"
-            disabled={zoneBusy || !activeTail}
-            onClick={analyzeFromVideo}
-            title={
-              !activeTail
-                ? 'Select an aircraft'
-                : 'Run Gemini on every unreviewed zone-saved photo for this tail (batches of up to 50; run again if more remain).'
-            }
-          >
-            {analyzing ? 'Analyzing…' : 'Analyze (unreviewed captures)'}
-          </button>
-          <button
-            type="button"
-            className="cam-btn"
-            disabled={zoneBusy || !activeTail}
-            onClick={() => fileAnalyzeRef.current?.click()}
-          >
-            Upload (analyze)
-          </button>
-          <button
-            type="button"
-            className="cam-btn"
-            disabled={zoneBusy || !activeTail || !selectedZone}
-            onClick={() => fileZoneRef.current?.click()}
-          >
-            Upload (save to zone)
-          </button>
-          <input
-            ref={fileAnalyzeRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f?.type.startsWith('image/')) runAnalysisOnBlob(f);
-            }}
-          />
-          <input
-            ref={fileZoneRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f?.type.startsWith('image/')) saveBlobToZone(f);
-            }}
-          />
         </div>
       </div>
 
@@ -758,22 +632,6 @@ export default function RemoteCapture() {
 
       {analysisError && (
         <div className="remote-capture-banner remote-capture-error" style={{ marginTop: 12 }}>{analysisError}</div>
-      )}
-      {lastOk === 'idle' && !analysisError && batchIdleMessage && (
-        <div className="remote-capture-banner" style={{ marginTop: 12, color: 'var(--muted)', borderColor: 'var(--border)' }}>
-          {batchIdleMessage}
-        </div>
-      )}
-      {lastOk === 'analyze' && !analysisError && (
-        <div className="remote-capture-banner remote-capture-ok" style={{ marginTop: 12 }}>
-          <div>
-            Analysis run finished. On the station PC, open that aircraft to review Gemini results and inspection
-            photos.
-            {batchIdleMessage && (
-              <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 8, lineHeight: 1.45 }}>{batchIdleMessage}</div>
-            )}
-          </div>
-        </div>
       )}
       {lastOk === 'capture' && !analysisError && (
         <div className="remote-capture-banner remote-capture-ok" style={{ marginTop: 12 }}>

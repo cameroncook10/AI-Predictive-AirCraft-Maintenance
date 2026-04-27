@@ -59,7 +59,7 @@ backend/
 
 ### Entry Point — `app/main.py`
 
-Creates the FastAPI `app` instance used by `uvicorn app.main:app`. Mounts all route modules under the `/api` prefix and exposes a lightweight `/health` endpoint for smoke checks and load balancers.
+Creates the FastAPI `app` instance used by `uvicorn app.main:app`. Mounts all route modules under the `/api` prefix and exposes a lightweight `/health` endpoint for manual or scripted smoke checks.
 
 ### API Layer — `app/api/`
 
@@ -147,4 +147,15 @@ Client POST /api/analysis/run
        ▼
   Response → { summary, per-frame outcomes }
 ```
+
+## Production (Docker)
+
+From the repo root (`AI-Predictive-AirCraft-Maintenance/`), build and run a single container that serves the Vite-built UI and `/api` on one port (default **8765**; platforms like Railway set **`PORT`** automatically).
+
+```bash
+docker build -t aeromind .
+docker run --rm -p 8765:8765 -e GEMINI_API_KEY=your_key_here aeromind
+```
+
+Open `http://localhost:8765`. Persisted uploads and JSONL stores live under `backend/data` inside the container unless you mount a volume there. Set **`CORS_ORIGINS`** if you later split the frontend to another host.
 

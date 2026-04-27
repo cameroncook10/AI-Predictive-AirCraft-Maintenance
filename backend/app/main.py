@@ -2,10 +2,12 @@
 FastAPI application entry: mounts routers and exposes process health.
 """
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 
 from app.api.routes import analysis, chat, fleet, frames, results
 from app.core.config import Settings, get_settings
@@ -37,3 +39,9 @@ def health(settings: Annotated[Settings, Depends(get_settings)]):
         "gemini_vision_model": settings.gemini_vision_model,
         "gemini_api_configured": bool((settings.gemini_api_key or "").strip()),
     }
+
+
+# Production Docker image copies Vite output to backend/static (see repo Dockerfile).
+_spa_dir = Path(__file__).resolve().parent.parent / "static"
+if (_spa_dir / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=str(_spa_dir), html=True), name="spa")
